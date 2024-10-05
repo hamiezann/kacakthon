@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Car Insurance DApp</title>
+    <!-- ethers.js from CDN -->
+    <script type="module" src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.min.js"></script>
+    <link rel="stylesheet" href="/styles/index.css">
+</head>
+<body>
+    <h1>Car Insurance DApp</h1>
+    
+    <!-- Display contract address -->
+    <div id="contractAddress"></div>
+
+    <!-- Form for selecting policy and entering NCD -->
+    <div>
+        <h3>Select a Policy</h3>
+        <div id="policyList"></div>
+
+        <form id="insuranceForm">
+            <label for="policySelect">Choose a Policy:</label>
+            <select id="policySelect" name="policySelect"></select><br><br>
+
+            <label for="ncdInput">Enter your NCD (No Claims Discount):</label>
+            <input type="number" id="ncdInput" name="ncdInput" min="0" placeholder="Enter NCD value"><br><br>
+
+            <button type="button" id="registerPolicyBtn">Register Policy</button>
+        </form>
+
+        <div id="message"></div>
+    </div>
+
+    <script type="module">
+        import { ethers } from "https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.min.js";
+
+        let signer;
+        let carInsuranceContract;
+
+        const contractAddress = "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9"; // Contract address
+
+        // Function to load ABI from local JSON file
+        async function loadABI() {
+            try {
+                const response = await fetch('../artifacts/contracts/CarInsurance.sol/CarInsurance.json'); // Ensure correct path
+                if (!response.ok) {
+                    throw new Error(`Error loading ABI: ${response.statusText}`);
+                }
+                const contractData = await response.json();
+                return contractData.abi; // Access the `abi` field
+            } catch (error) {
+                console.error("Failed to load ABI:", error);
+                document.getElementById("message").innerText = "Error loading ABI. Check console for details.";
+                throw error;
+            }
+        }
+
+        // On page load, connect to the contract
+        async function init() {
+            if (typeof window.ethereum !== 'undefined') {
+                await ethereum.request({ method: 'eth_requestAccounts' });
+
+                // Initialize provider and signer
+                const provider = new ethers.BrowserProvider(window.ethereum);
+                signer = await provider.getSigner();
+
+                // Load the ABI dynamically
+                const contractABI = await loadABI();
+
+                // Initialize contract with ABI and contract address
+                carInsuranceContract = new ethers.Contract(contractAddress, contractABI, signer);
+
+                // Display the contract address on the page
+                document.getElementById("contractAddress").innerText = `Contract Address: ${contractAddress}`;
+
+                // Load available policies
+                loadPolicies();
+            } else {
+                alert("Please install MetaMask!");
+            }
+        }
+
+        // Load available policies from the blockchain
+        // async function loadPolicies() {
+            try {
+                const policyCount = await carInsuranceContract.policyCount();  // Get total number of policies on-chain
+                let policyOptionsHTML = '';
+
+                // Loop through each policy and display its details
+                for (let i = 0; i < policyCount; i++) {
+                    const policy = await carInsuranceContract.policies(i);
+                    const formattedPremium = ethers.utils.formatEther(policy.premiumAmount); // Format premium as ETH
+                    policyOptionsHTML += `<option value="${i}">Policy ${i}: Premium ${formattedPremium} ETH</option>`;
+                }
+
+                // Set options in the dropdown for policies
+                document.getElementById("policySelect").innerHTML = policyOptionsHTML;
+            } catch (error) {
+                console.error("Error loading policies: ", error);
+                document.getElementById("message").innerText = "Error loading policies.";
+            }
+        }
+
+        // Load available policies from the blockchain
+async function loadPolicies() {
+    try {
+        const policyCount = await carInsuranceContract.policyCount(); // Get total number of policies on-chain
+        let policyOptionsHTML = '';
+
+        // Loop through each policy and display its details
+        for (let i = 0; i < policyCount; i++) {
+            const policy = await carInsuranceContract.policies(i);
+            console.log(policy); // Log the entire policy object to check its structure
+
+            // Check the structure of the policy object and modify accordingly
+            const formattedPremium = ethers.utils.formatEther(policy.premiumAmount); // Ensure this is the correct property
+
+            policyOptionsHTML += `<option value="${i}">Policy ${i}: Premium ${formattedPremium} ETH</option>`;
+        }
+
+        // Set options in the dropdown for policies
+        document.getElementById("policySelect").innerHTML = policyOptionsHTML;
+    } catch (error) {
+        console.error("Error loading policies: ", error);
+        document.getElementById("message").innerText = "Error loading policies.";
+    }
+}
+
+
+        // Register user for a selected policy
+        document.getElementById("registerPolicyBtn").addEventListener('click', async () => {
+            const selectedPolicyId = document.getElementById("policySelect").value;  // Get selected policy
+            const ncdValue = document.getElementById("ncdInput").value;  // Get entered NCD value
+
+            // Ensure that both policy and NCD are selected/entered
+            if (!selectedPolicyId || ncdValue === "") {
+                document.getElementById("message").innerText = "Please select a policy and enter your NCD.";
+                return;
+            }
+
+            try {
+                // Call registerUser function in smart contract with the selected policy and NCD
+                const tx = await carInsuranceContract.registerUser(selectedPolicyId, ncdValue, {
+                    value: ethers.utils.parseEther("0.01") // Adjust payment amount as necessary
+                });
+
+                await tx.wait();  // Wait for the transaction to be confirmed
+                document.getElementById("message").innerText = "Successfully registered!";
+            } catch (error) {
+                console.error("Registration Error:", error);
+                document.getElementById("message").innerText = "Error: " + error.message;
+            }
+        });
+
+        // Initialize the app on page load
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
