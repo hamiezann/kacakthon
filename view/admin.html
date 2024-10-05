@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Car Insurance DApp - Admin Dashboard</title>
+    <!-- ethers.js from CDN -->
+    <script type="module" src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.min.js"></script>
+    <link rel="stylesheet" href="/styles/index.css">
+</head>
+<body>
+    <h1>Car Insurance Admin Dashboard</h1>
+
+    <!-- Section for adding a new policy -->
+    <div>
+        <h2>Add New Policy</h2>
+        <form id="addPolicyForm">
+            <label for="premiumAmount">Premium Amount (in Wei):</label>
+            <input type="number" id="premiumAmount" name="premiumAmount" required><br><br>
+
+            <label for="baseNCD">Base NCD (in percentage):</label>
+            <input type="number" id="baseNCD" name="baseNCD" required><br><br>
+
+            <label for="carAgeFactor">Car Age Factor (in percentage):</label>
+            <input type="number" id="carAgeFactor" name="carAgeFactor" required><br><br>
+
+            <label for="carBrandFactor">Car Brand Factor (in percentage):</label>
+            <input type="number" id="carBrandFactor" name="carBrandFactor" required><br><br>
+
+            <label for="claimResetNCD">Claim Reset NCD (in percentage):</label>
+            <input type="number" id="claimResetNCD" name="claimResetNCD" required><br><br>
+
+            <button type="button" id="addPolicyBtn">Add Policy</button>
+        </form>
+        <div id="addPolicyMessage"></div>
+    </div>
+
+    <!-- Section for withdrawing company profits -->
+    <div>
+        <h2>Withdraw Company Profits</h2>
+        <button id="withdrawProfitsBtn">Withdraw Profits</button>
+        <div id="withdrawMessage"></div>
+    </div>
+
+    <!-- Section for investing reinsurance funds -->
+    <div>
+        <h2>Invest Reinsurance Funds</h2>
+        <form id="investReinsuranceForm">
+            <label for="reinsuranceAmount">Amount (in Wei):</label>
+            <input type="number" id="reinsuranceAmount" name="reinsuranceAmount" required><br><br>
+
+            <label for="investmentAddress">Investment Address:</label>
+            <input type="text" id="investmentAddress" name="investmentAddress" required><br><br>
+
+            <button type="button" id="investReinsuranceBtn">Invest Funds</button>
+        </form>
+        <div id="investMessage"></div>
+    </div>
+
+    <script type="module">
+        import { ethers } from "https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.min.js";
+    
+        const contractAddress = "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9"; // Replace with your actual contract address
+    
+        let carInsuranceContract;
+        let signer;
+    
+        async function loadABI() {
+            try {
+                const response = await fetch('../artifacts/contracts/CarInsurance.sol/CarInsurance.json');
+                if (!response.ok) {
+                    throw new Error(`Error loading ABI: ${response.statusText}`);
+                }
+                const contractABI = await response.json();
+                return contractABI.abi; // Make sure to access the `abi` field
+            } catch (error) {
+                console.error("Failed to load ABI:", error);
+                document.getElementById("addPolicyMessage").innerText = "Error loading ABI. Check console for details.";
+                throw error;
+            }
+        }
+    
+        // Initialize connection to the Ethereum provider
+        async function init() {
+            try {
+                if (typeof window.ethereum !== 'undefined') {
+                    await ethereum.request({ method: 'eth_requestAccounts' });
+                    const provider = new ethers.BrowserProvider(window.ethereum);
+                    signer = await provider.getSigner();
+    
+                    const contractABI = await loadABI();
+                    carInsuranceContract = new ethers.Contract(contractAddress, contractABI, signer);
+    
+                    console.log("Contract loaded successfully:", carInsuranceContract);
+                } else {
+                    alert("Please install MetaMask to use this DApp.");
+                }
+            } catch (error) {
+                console.error("Failed to initialize contract:", error);
+                document.getElementById("addPolicyMessage").innerText = "Error initializing contract. Check console for details.";
+            }
+        }
+    
+        // Add a new policy
+        document.getElementById("addPolicyBtn").addEventListener('click', async () => {
+            if (!carInsuranceContract) {
+                document.getElementById("addPolicyMessage").innerText = "Contract is not initialized. Please try again.";
+                return;
+            }
+    
+            const premiumAmount = document.getElementById("premiumAmount").value;
+            const baseNCD = document.getElementById("baseNCD").value;
+            const carAgeFactor = document.getElementById("carAgeFactor").value;
+            const carBrandFactor = document.getElementById("carBrandFactor").value;
+            const claimResetNCD = document.getElementById("claimResetNCD").value;
+    
+            try {
+                const tx = await carInsuranceContract.addPolicy(
+                    premiumAmount,
+                    baseNCD,
+                    carAgeFactor,
+                    carBrandFactor,
+                    claimResetNCD
+                );
+                await tx.wait();
+                document.getElementById("addPolicyMessage").innerText = "Policy added successfully!";
+            } catch (error) {
+                console.error("Failed to add policy:", error);
+                document.getElementById("addPolicyMessage").innerText = "Error: " + error.message;
+            }
+        });
+    
+        // Withdraw company profits
+        document.getElementById("withdrawProfitsBtn").addEventListener('click', async () => {
+            if (!carInsuranceContract) {
+                document.getElementById("withdrawMessage").innerText = "Contract is not initialized. Please try again.";
+                return;
+            }
+    
+            try {
+                const tx = await carInsuranceContract.withdrawCompanyProfits();
+                await tx.wait();
+                document.getElementById("withdrawMessage").innerText = "Company profits withdrawn!";
+            } catch (error) {
+                console.error("Failed to withdraw profits:", error);
+                document.getElementById("withdrawMessage").innerText = "Error: " + error.message;
+            }
+        });
+    
+        // Invest reinsurance funds
+        document.getElementById("investReinsuranceBtn").addEventListener('click', async () => {
+            if (!carInsuranceContract) {
+                document.getElementById("investMessage").innerText = "Contract is not initialized. Please try again.";
+                return;
+            }
+    
+            const amount = document.getElementById("reinsuranceAmount").value;
+            const investmentAddress = document.getElementById("investmentAddress").value;
+    
+            try {
+                const tx = await carInsuranceContract.investReinsuranceFunds(amount, investmentAddress);
+                await tx.wait();
+                document.getElementById("investMessage").innerText = "Reinsurance funds invested successfully!";
+            } catch (error) {
+                console.error("Failed to invest reinsurance funds:", error);
+                document.getElementById("investMessage").innerText = "Error: " + error.message;
+            }
+        });
+    
+        // Initialize on page load
+        window.addEventListener('load', init);
+    </script>
+    
+</body>
+</html>
