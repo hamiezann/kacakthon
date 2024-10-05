@@ -14,11 +14,15 @@
     <!-- Display contract address -->
     <div id="contractAddress"></div>
 
+    <!-- Section for displaying available policies -->
+    <div>
+        <h3>Available Policies</h3>
+        <div id="displayedPolicies"></div>
+    </div>
+
     <!-- Form for selecting policy and entering NCD -->
     <div>
         <h3>Select a Policy</h3>
-        <div id="policyList"></div>
-
         <form id="insuranceForm">
             <label for="policySelect">Choose a Policy:</label>
             <select id="policySelect" name="policySelect"></select><br><br>
@@ -38,7 +42,16 @@
         let signer;
         let carInsuranceContract;
 
-        const contractAddress = "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9"; // Contract address
+        const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // Contract address
+
+        // Dummy data for policies (5 sample policies with real-world-like data)
+        const dummyPolicies = [
+            { id: 0, name: "Basic Coverage", description: "Covers minor accidents and third-party liabilities.", premiumAmount: "0.05", coverage: "Up to $10,000" },
+            { id: 1, name: "Standard Coverage", description: "Covers accidents, theft, and third-party liabilities.", premiumAmount: "0.10", coverage: "Up to $50,000" },
+            { id: 2, name: "Comprehensive Coverage", description: "Full coverage for accidents, theft, fire, and natural disasters.", premiumAmount: "0.20", coverage: "Up to $100,000" },
+            { id: 3, name: "Premium Coverage", description: "Includes comprehensive coverage with added benefits.", premiumAmount: "0.30", coverage: "Up to $200,000" },
+            { id: 4, name: "Elite Coverage", description: "Top-tier coverage for high-end vehicles and full protection.", premiumAmount: "0.50", coverage: "Unlimited" }
+        ];
 
         // Function to load ABI from local JSON file
         async function loadABI() {
@@ -56,7 +69,34 @@
             }
         }
 
-        // On page load, connect to the contract
+        // Function to display dummy policies on the page
+        function displayPolicies() {
+            let policyDisplayHTML = '';
+
+            dummyPolicies.forEach(policy => {
+                policyDisplayHTML += `
+                    <div class="policy">
+                        <h4>${policy.name}</h4>
+                        <p>${policy.description}</p>
+                        <p>Premium: ${policy.premiumAmount} ETH</p>
+                        <p>Coverage: ${policy.coverage}</p>
+                    </div>
+                    <hr>
+                `;
+            });
+
+            // Display policy data in the "displayedPolicies" section
+            document.getElementById("displayedPolicies").innerHTML = policyDisplayHTML;
+
+            // Load policies into the dropdown
+            let policyOptionsHTML = '';
+            dummyPolicies.forEach(policy => {
+                policyOptionsHTML += `<option value="${policy.id}">${policy.name} - ${policy.premiumAmount} ETH</option>`;
+            });
+            document.getElementById("policySelect").innerHTML = policyOptionsHTML;
+        }
+
+        // On page load, connect to the contract and display policies
         async function init() {
             if (typeof window.ethereum !== 'undefined') {
                 await ethereum.request({ method: 'eth_requestAccounts' });
@@ -74,59 +114,12 @@
                 // Display the contract address on the page
                 document.getElementById("contractAddress").innerText = `Contract Address: ${contractAddress}`;
 
-                // Load available policies
-                loadPolicies();
+                // Display dummy policies
+                displayPolicies();
             } else {
                 alert("Please install MetaMask!");
             }
         }
-
-        // Load available policies from the blockchain
-        // async function loadPolicies() {
-            try {
-                const policyCount = await carInsuranceContract.policyCount();  // Get total number of policies on-chain
-                let policyOptionsHTML = '';
-
-                // Loop through each policy and display its details
-                for (let i = 0; i < policyCount; i++) {
-                    const policy = await carInsuranceContract.policies(i);
-                    const formattedPremium = ethers.utils.formatEther(policy.premiumAmount); // Format premium as ETH
-                    policyOptionsHTML += `<option value="${i}">Policy ${i}: Premium ${formattedPremium} ETH</option>`;
-                }
-
-                // Set options in the dropdown for policies
-                document.getElementById("policySelect").innerHTML = policyOptionsHTML;
-            } catch (error) {
-                console.error("Error loading policies: ", error);
-                document.getElementById("message").innerText = "Error loading policies.";
-            }
-        }
-
-        // Load available policies from the blockchain
-async function loadPolicies() {
-    try {
-        const policyCount = await carInsuranceContract.policyCount(); // Get total number of policies on-chain
-        let policyOptionsHTML = '';
-
-        // Loop through each policy and display its details
-        for (let i = 0; i < policyCount; i++) {
-            const policy = await carInsuranceContract.policies(i);
-            console.log(policy); // Log the entire policy object to check its structure
-
-            // Check the structure of the policy object and modify accordingly
-            const formattedPremium = ethers.utils.formatEther(policy.premiumAmount); // Ensure this is the correct property
-
-            policyOptionsHTML += `<option value="${i}">Policy ${i}: Premium ${formattedPremium} ETH</option>`;
-        }
-
-        // Set options in the dropdown for policies
-        document.getElementById("policySelect").innerHTML = policyOptionsHTML;
-    } catch (error) {
-        console.error("Error loading policies: ", error);
-        document.getElementById("message").innerText = "Error loading policies.";
-    }
-}
-
 
         // Register user for a selected policy
         document.getElementById("registerPolicyBtn").addEventListener('click', async () => {
@@ -142,7 +135,7 @@ async function loadPolicies() {
             try {
                 // Call registerUser function in smart contract with the selected policy and NCD
                 const tx = await carInsuranceContract.registerUser(selectedPolicyId, ncdValue, {
-                    value: ethers.utils.parseEther("0.01") // Adjust payment amount as necessary
+                    value: ethers.parseEther("0.01") // Adjust payment amount as necessary
                 });
 
                 await tx.wait();  // Wait for the transaction to be confirmed
