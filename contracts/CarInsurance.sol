@@ -10,9 +10,14 @@ contract CarInsurance {
         bool registered;
         uint256 lastPaymentYear; // Track last payment year for NCD adjustment
         bool hasClaimed;  // Track whether the user has made a claim this year
+        uint256 policyId;  // Track the policy this user registered for
+        string carType;
+        uint256 carAge;
+        string carBrand;
     }
     
     struct Policy {
+        string name;
         uint256 premiumAmount;
         uint256 baseNCD;  // Base NCD allowed for this policy
         uint256 carAgeFactor;  // Factor for calculating premium based on car age
@@ -20,6 +25,16 @@ contract CarInsurance {
         uint256 claimResetNCD;  // NCD value if claim is made
         bool active;
     }
+
+    struct Transaction {
+        uint256 policyId;
+        uint256 ncd;
+        uint256 premiumAmount;
+        address user;
+        uint256 timestamp;
+    }
+
+    Transaction[] public transactions;
 
     address public insuranceCompany;
     uint256 public totalPremiumPool;
@@ -30,6 +45,9 @@ contract CarInsurance {
     mapping(address => User) public users;
     mapping(uint256 => Policy) public policies; // Mapping from policy ID to Policy
     uint256 public policyCount;
+
+    // Event to emit upon user registration
+    event UserRegistered(address indexed user, uint256 policyId, uint256 premiumPaid, uint256 ncd, string carType, uint256 carAge, string carBrand);
 
     // Modifiers
     modifier onlyInsuranceCompany() {
@@ -43,22 +61,78 @@ contract CarInsurance {
         policyCount = 0;
     }
 
-    // User registers with a policy and NCD
-    function registerUser(uint256 _policyId, uint256 _ncd) public payable {
-        require(!users[msg.sender].registered, "User is already registered.");
-        Policy memory selectedPolicy = policies[_policyId];
-        require(selectedPolicy.active, "Policy is not active.");
-        require(msg.value == selectedPolicy.premiumAmount, "Incorrect premium amount.");
+    // Validate if the selected policy exists and is active
+    function validatePolicy(uint256 _policyId) internal view returns (bool) {
+        require(_policyId < policyCount, "Policy does not exist.");
+        require(policies[_policyId].active, "Policy is not active.");
+        return true;
+    }
+
+    // Validate the NCD provided by the user
+    function validateNCD(uint256 _ncd, uint256 _policyId) internal view returns (bool) {
+        require(_ncd <= policies[_policyId].baseNCD, "NCD exceeds the base NCD for this policy.");
+        return true;
+    }
+
+    // View function to calculate the premium for the user before registration
+    function calculatePremium(uint256 _policyId, uint256 _ncd, uint256 _carAge, uint256 _carBrandFactor) public view returns (uint256) {
+        Policy memory policy = policies[_policyId];
+
+        // Adjust premium based on NCD
+        uint256 discountedPremium = policy.premiumAmount * (100 - _ncd) / 100;
         
-        // Calculate premium based on NCD, car factors, and other variables
-        uint256 premiumAmount = calculatePremium(_policyId, _ncd);
-        require(msg.value >= premiumAmount, "Premium payment is too low based on NCD and policy.");
+        // Further adjust premium based on car factors (age, brand, etc.)
+        uint256 adjustedPremium = discountedPremium * _carAge / 100;
+        adjustedPremium = adjustedPremium * _carBrandFactor / 100;
+
+        return adjustedPremium;
+    }
+
+    // Register user for a selected policy
+    function registerUser(
+        uint256 _policyId, 
+        uint256 _ncd, 
+        string memory _carType, 
+        uint256 _carAge, 
+        string memory _carBrand
+    ) public payable {
+        require(!users[msg.sender].registered || block.timestamp >= users[msg.sender].lastPaymentYear + 365 days, "User is already registered for the year.");
+
+        // Validate policy and NCD
+        validatePolicy(_policyId);
+        validateNCD(_ncd, _policyId);
+
+        Policy memory selectedPolicy = policies[_policyId];
+        uint256 premiumAmount = calculatePremium(_policyId, _ncd, _carAge, selectedPolicy.carBrandFactor);
+        
+        require(msg.value >= premiumAmount, "Incorrect premium amount.");
 
         // Register user and set the year they paid the premium
-        users[msg.sender] = User(msg.sender, _ncd, msg.value, true, block.timestamp, false);
-        
+        users[msg.sender] = User({
+            userAddress: msg.sender,
+            ncd: _ncd,
+            premiumPaid: msg.value,
+            registered: true,
+            lastPaymentYear: block.timestamp,
+            hasClaimed: false,
+            policyId: _policyId,
+            carType: _carType,
+            carAge: _carAge,
+            carBrand: _carBrand
+        });
+
         // Allocate premium funds to respective pools
         allocatePremiumFunds(msg.value);
+
+        // Emit an event upon successful registration
+        emit UserRegistered(msg.sender, _policyId, msg.value, _ncd, _carType, _carAge, _carBrand);
+        transactions.push(Transaction({
+            policyId: _policyId,
+            ncd: _ncd,
+            premiumAmount: premiumAmount,
+            user: msg.sender,
+            timestamp: block.timestamp
+        }));
     }
 
     // Allocate the premium to different pools
@@ -78,31 +152,9 @@ contract CarInsurance {
         totalPremiumPool += _premiumAmount;
     }
 
-    // User can submit a claim, verified manually by the company
-    function submitClaim(uint256 _claimAmount) public {
-        require(users[msg.sender].registered, "User is not registered.");
-        require(_claimAmount <= claimPool, "Insufficient funds in the claim pool.");
-        
-        // Update NCD based on claim (reset to predefined value)
-        resetNCD(msg.sender);
-        
-        // Mark user as having claimed this year
-        users[msg.sender].hasClaimed = true;
-
-        // Submit claim for manual review by insurance company
-        claimPool -= _claimAmount;
-        payable(msg.sender).transfer(_claimAmount);
-    }
-
-    // Insurance company can withdraw profits (up to 25% of the pool)
-    function withdrawCompanyProfits() public onlyInsuranceCompany {
-        uint256 withdrawAmount = companyProfitPool;
-        companyProfitPool = 0;
-        payable(insuranceCompany).transfer(withdrawAmount);
-    }
-
     // Add new policy (only by the insurance company)
     function addPolicy(
+        string memory _name,
         uint256 _premiumAmount,
         uint256 _baseNCD,
         uint256 _carAgeFactor,
@@ -110,6 +162,7 @@ contract CarInsurance {
         uint256 _claimResetNCD
     ) public onlyInsuranceCompany {
         policies[policyCount] = Policy(
+            _name,
             _premiumAmount, 
             _baseNCD, 
             _carAgeFactor, 
@@ -119,51 +172,38 @@ contract CarInsurance {
         );
         policyCount++;
     }
-    
-    // Insurance company invests reinsurance pool
-    function investReinsuranceFunds(uint256 _amount, address _investmentAddress) public onlyInsuranceCompany {
-        require(_amount <= reinsurancePool, "Insufficient reinsurance pool funds.");
-        reinsurancePool -= _amount;
-        payable(_investmentAddress).transfer(_amount);
-    }
-
-    // NCD Management and Yearly Update
-    function updateNCD() public {
-        require(users[msg.sender].registered, "User is not registered.");
-        User storage user = users[msg.sender];
-
-        // Ensure user hasn't missed a payment year
-        uint256 currentYear = block.timestamp;
-        if (currentYear - user.lastPaymentYear >= 365 * 24 * 60 * 60 && !user.hasClaimed) {
-            // Increase NCD if no claims were made and premium is paid on time
-            user.ncd += 5;  // Increase NCD by 5% for each year without a claim
-            user.lastPaymentYear = currentYear;
-        } else if (currentYear - user.lastPaymentYear >= 365 * 24 * 60 * 60 && user.hasClaimed) {
-            resetNCD(msg.sender);
-        }
-
-        // Reset claim status for the next year
-        user.hasClaimed = false;
-    }
 
     // Reset the user's NCD after a claim
     function resetNCD(address _userAddress) internal {
         users[_userAddress].ncd = policies[0].claimResetNCD;  // Reset NCD based on the policy
     }
 
-    // Calculate premium based on policy and NCD
-    function calculatePremium(uint256 _policyId, uint256 _ncd) public view returns (uint256) {
-        Policy memory policy = policies[_policyId];
+            // Function to return details of a specific policy
+        function getPolicy(uint256 _policyId) public view returns (string memory, uint256, uint256, uint256, bool) {
+            Policy memory policy = policies[_policyId];
+            return (policy.name, policy.premiumAmount, policy.baseNCD, policy.claimResetNCD, policy.active);
+        }
 
-        // Adjust premium based on NCD
-        uint256 discountedPremium = policy.premiumAmount * (100 - _ncd) / 100;
-        
-        // Further adjust premium based on car factors (age, brand, etc.)
-        uint256 adjustedPremium = discountedPremium * policy.carAgeFactor / 100;
-        adjustedPremium = adjustedPremium * policy.carBrandFactor / 100;
+        // Function to return the total number of policies
+        function getPolicyCount() public view returns (uint256) {
+            return policyCount;
+        }
 
-        return adjustedPremium;
-    }
+        //function to retrieve total premium pool
+        function getTotalPremiumPool() public view returns (uint256) {
+            return totalPremiumPool;
+        }
+
+        //function to retrieve transaction history
+        function getTransaction(uint256 _index) public view returns (Transaction memory) {
+            require(_index < transactions.length, "Transaction does not exist");
+            return transactions[_index];
+        }
+
+        function getTransactionCount() public view returns (uint256) {
+            return transactions.length;
+        }
+
 
     // Fallback function to receive ether
     receive() external payable {}

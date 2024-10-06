@@ -15,6 +15,9 @@
     <div>
         <h2>Add New Policy</h2>
         <form id="addPolicyForm">
+            <label for="policyName">Policy Name:</label>
+            <input type="text" id="policyName" name="policyName" required><br><br>
+
             <label for="premiumAmount">Premium Amount (in Wei):</label>
             <input type="number" id="premiumAmount" name="premiumAmount" required><br><br>
 
@@ -60,7 +63,7 @@
     <script type="module">
         import { ethers } from "https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.min.js";
     
-        const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // Replace with your actual contract address
+        const contractAddress = "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9"; // Replace with your actual contract address
     
         let carInsuranceContract;
         let signer;
@@ -108,6 +111,7 @@
                 return;
             }
     
+            const name = document.getElementById("policyName").value;
             const premiumAmount = document.getElementById("premiumAmount").value;
             const baseNCD = document.getElementById("baseNCD").value;
             const carAgeFactor = document.getElementById("carAgeFactor").value;
@@ -116,6 +120,7 @@
     
             try {
                 const tx = await carInsuranceContract.addPolicy(
+                    name,
                     premiumAmount,
                     baseNCD,
                     carAgeFactor,
